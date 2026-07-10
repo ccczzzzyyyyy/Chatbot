@@ -1,5 +1,9 @@
 """TUI 主应用 —— 菜单路由、状态管理"""
 
+import logging
+import logging.config
+import os
+
 from src.core.chat_engine import ChatEngine
 from src.core.config_manager import ConfigManager
 from src.core.preset_manager import PresetManager
@@ -10,6 +14,8 @@ from src.storage.factory import StorageFactory
 from src.ui.tui.chat_view import ChatView
 from src.ui.tui.menu_view import MenuView
 from src.ui.tui.widgets import console
+
+logger = logging.getLogger("langchain_chat")
 
 
 class TUIApp(AbstractUI):
@@ -33,8 +39,25 @@ class TUIApp(AbstractUI):
             return {"id": u.id, "username": u.username, "default_model": u.default_model}
         return None
 
+    @staticmethod
+    def _setup_logging() -> None:
+        """配置日志系统"""
+        os.makedirs("logs", exist_ok=True)
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+            handlers=[
+                logging.StreamHandler(),
+                logging.FileHandler("logs/app.log", encoding="utf-8"),
+            ],
+        )
+
     async def run(self) -> None:
         """启动 TUI 主循环"""
+        # 配置日志
+        self._setup_logging()
+
         self._config = ConfigManager()
         storage_config = self._config.storage_config
         self._storage = StorageFactory.create(
