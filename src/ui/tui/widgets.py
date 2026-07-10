@@ -1,5 +1,6 @@
 """TUI 复用组件 —— 样式、格式化、工具函数"""
 
+from rich.box import ROUNDED
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
@@ -12,7 +13,7 @@ console = Console()
 def print_title(text: str) -> None:
     """打印主标题"""
     console.print()
-    console.print(Panel(Text(text, style="bold cyan", justify="center"), box=True))
+    console.print(Panel(Text(text, style="bold cyan", justify="center"), box=ROUNDED))
 
 
 def print_subtitle(text: str) -> None:

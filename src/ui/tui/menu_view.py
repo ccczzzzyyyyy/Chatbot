@@ -1,7 +1,7 @@
 """菜单视图 —— 用户/会话/预设/设置等菜单界面"""
 
-from prompt_toolkit import prompt
 from prompt_toolkit.history import InMemoryHistory
+from prompt_toolkit.shortcuts import PromptSession
 from prompt_toolkit.shortcuts import clear as clear_screen
 
 from src.ui.tui.widgets import (
@@ -20,7 +20,7 @@ class MenuView:
     """TUI 菜单视图，负责各类菜单的展示与交互"""
 
     def __init__(self) -> None:
-        self._history = InMemoryHistory()
+        self._session = PromptSession(history=InMemoryHistory())
 
     # ── 主菜单 ────────────────────────────────────────────
 
@@ -122,7 +122,7 @@ class MenuView:
     async def get_text_input(self, prompt_text: str) -> str:
         """获取用户文本输入"""
         try:
-            result = prompt(f"{prompt_text}: ", history=self._history)
+            result = await self._session.prompt_async(f"{prompt_text}: ")
             return result.strip()
         except (EOFError, KeyboardInterrupt):
             return ""
@@ -130,8 +130,8 @@ class MenuView:
     async def get_confirmation(self, prompt_text: str) -> bool:
         """获取用户确认"""
         try:
-            result = prompt(f"{prompt_text} (y/n): ").strip().lower()
-            return result in ("y", "yes", "是")
+            result = await self._session.prompt_async(f"{prompt_text} (y/n): ")
+            return result.strip().lower() in ("y", "yes", "是")
         except (EOFError, KeyboardInterrupt):
             return False
 
@@ -139,7 +139,8 @@ class MenuView:
         """获取用户菜单选择"""
         while True:
             try:
-                choice = prompt(f"{prompt_text}: ").strip()
+                choice = await self._session.prompt_async(f"{prompt_text}: ")
+                choice = choice.strip()
                 if choice in valid_choices:
                     return choice
                 print_error(f"无效选择，请输入: {', '.join(valid_choices)}")

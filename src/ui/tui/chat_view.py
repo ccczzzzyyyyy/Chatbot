@@ -1,8 +1,7 @@
 """对话视图 —— 用户输入、流式显示、Token 统计展示"""
 
-from prompt_toolkit import prompt
 from prompt_toolkit.history import InMemoryHistory
-from rich.live import Live
+from prompt_toolkit.shortcuts import PromptSession
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.text import Text
@@ -14,7 +13,7 @@ class ChatView:
     """对话视图，负责对话交互的展示"""
 
     def __init__(self) -> None:
-        self._history = InMemoryHistory()
+        self._session = PromptSession(history=InMemoryHistory())
 
     async def start_chat_view(self, session_title: str) -> None:
         """进入对话界面"""
@@ -24,7 +23,7 @@ class ChatView:
     async def get_user_message(self) -> str:
         """获取用户输入的消息"""
         try:
-            msg = prompt("你: ", history=self._history, multiline=False)
+            msg = await self._session.prompt_async("你: ", multiline=False)
             return msg.strip()
         except (EOFError, KeyboardInterrupt):
             return "/quit"

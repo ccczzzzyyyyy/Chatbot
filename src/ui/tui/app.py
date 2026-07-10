@@ -13,7 +13,7 @@ from src.interface.ui_protocol import AbstractUI
 from src.storage.factory import StorageFactory
 from src.ui.tui.chat_view import ChatView
 from src.ui.tui.menu_view import MenuView
-from src.ui.tui.widgets import console
+from src.ui.tui.widgets import console, render_markdown
 
 logger = logging.getLogger("langchain_chat")
 
@@ -323,7 +323,7 @@ class TUIApp(AbstractUI):
             return
 
         # 创建新会话
-        current_model = self._user_manager.current_user.default_model
+        current_model = self._config.model_name
         session = await self._session_manager.create_session(
             user_id=user_id,
             model_name=current_model,
@@ -368,6 +368,11 @@ class TUIApp(AbstractUI):
                     full_response += chunk
                     console.print(chunk, end="")
                 console.print("\n")
+
+                # Markdown 渲染
+                if full_response:
+                    console.print()
+                    render_markdown(full_response)
 
                 # 保存 AI 回复
                 if full_response:
@@ -456,12 +461,18 @@ class TUIApp(AbstractUI):
                     await self._session_manager.save_message(role="human", content=user_msg)
 
                     try:
+                        console.print()
                         console.print("[bold cyan]AI:[/bold cyan]")
+
                         full_response = ""
                         async for chunk in self._chat_engine.stream_chat(user_msg):
                             full_response += chunk
                             console.print(chunk, end="")
                         console.print("\n")
+
+                        if full_response:
+                            console.print()
+                            render_markdown(full_response)
 
                         if full_response:
                             await self._session_manager.save_message(
