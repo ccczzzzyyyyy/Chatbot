@@ -1,9 +1,7 @@
 """TUI 主应用 —— 菜单路由、状态管理"""
 
-import asyncio
-from datetime import datetime
-
 from src.core.config_manager import ConfigManager
+from src.core.preset_manager import PresetManager
 from src.core.user_manager import UserManager
 from src.interface.ui_protocol import AbstractUI
 from src.storage.factory import StorageFactory
@@ -21,6 +19,7 @@ class TUIApp(AbstractUI):
         self._config: ConfigManager | None = None
         self._storage = None
         self._user_manager: UserManager | None = None
+        self._preset_manager: PresetManager | None = None
 
     @property
     def current_user(self) -> dict | None:
@@ -31,7 +30,6 @@ class TUIApp(AbstractUI):
 
     async def run(self) -> None:
         """启动 TUI 主循环"""
-        # 初始化配置和存储
         self._config = ConfigManager()
         storage_config = self._config.storage_config
         self._storage = StorageFactory.create(
@@ -40,9 +38,8 @@ class TUIApp(AbstractUI):
         )
         await self._storage.initialize()
         self._user_manager = UserManager(self._storage)
-
-        # 加载系统内置预设到数据库（如果尚未加载）
-        await self._ensure_builtin_presets()
+        self._preset_manager = PresetManager(self._storage)
+        await self._preset_manager.load_builtin_presets()
 
         self._running = True
         try:
@@ -51,35 +48,6 @@ class TUIApp(AbstractUI):
                 await self._handle_action(action)
         finally:
             await self._storage.close()
-
-    async def _ensure_builtin_presets(self) -> None:
-        """确保系统内置预设已加载到数据库"""
-        import os
-
-        import yaml
-
-        from src.models.schemas import Preset
-
-        existing = await self._storage.list_presets(user_id=None)
-        if any(p.is_builtin for p in existing):
-            return  # 已加载
-
-        presets_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "config", "presets.yaml")
-        presets_path = os.path.normpath(presets_path)
-        if not os.path.exists(presets_path):
-            return
-
-        with open(presets_path, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f)
-
-        for p_data in data.get("presets", []):
-            preset = Preset(
-                name=p_data["name"],
-                description=p_data.get("description", ""),
-                system_prompt=p_data.get("system_prompt", ""),
-                is_builtin=True,
-            )
-            await self._storage.create_preset(preset)
 
     # ── 路由处理 ──────────────────────────────────────────
 
@@ -102,6 +70,11 @@ class TUIApp(AbstractUI):
             await self._handle_settings()
         elif action == "quit":
             await self._handle_quit()
+
+    def _get_current_user_id(self) -> int | None:
+        if self._user_manager and self._user_manager.current_user:
+            return self._user_manager.current_user.id
+        return None
 
     # ── 用户管理（Step 4 实现） ────────────────────────────
 
@@ -126,6 +99,7 @@ class TUIApp(AbstractUI):
         try:
             user = await self._user_manager.create_user(username)
             self._user_manager._current_user = user
+            self._preset_manager.user_id = user.id
             self.menu.show_message(f"用户 '{username}' 创建成功，已自动登录", "success")
         except ValueError as e:
             self.menu.show_message(str(e), "error")
@@ -136,6 +110,7 @@ class TUIApp(AbstractUI):
             return
         try:
             user = await self._user_manager.switch_user(username)
+            self._preset_manager.user_id = user.id
             self.menu.show_message(f"已切换到用户 '{user.username}'", "success")
         except ValueError as e:
             self.menu.show_message(str(e), "error")
@@ -150,6 +125,7 @@ class TUIApp(AbstractUI):
             return
         try:
             await self._user_manager.delete_user(username)
+            self._preset_manager.user_id = None
             self.menu.show_message(f"用户 '{username}' 已删除", "success")
         except ValueError as e:
             self.menu.show_message(str(e), "error")
@@ -168,7 +144,146 @@ class TUIApp(AbstractUI):
         self.menu.show_user_list(user_list)
         await self._wait_enter()
 
-    # ── 其它功能（后续步骤实现） ──────────────────────────
+    # ── 预设管理（Step 5 实现） ────────────────────────────
+
+    async def _handle_preset_menu(self) -> None:
+        while True:
+            action = await self.menu.show_preset_menu()
+            if action == "back":
+                break
+            elif action == "list_presets":
+                await self._do_list_presets()
+            elif action == "select_preset":
+                await self._do_select_preset()
+            elif action == "create_preset":
+                await self._do_create_preset()
+            elif action == "edit_preset":
+                await self._do_edit_preset()
+            elif action == "delete_preset":
+                await self._do_delete_preset()
+
+    async def _do_list_presets(self) -> None:
+        user_id = self._get_current_user_id()
+        self._preset_manager.user_id = user_id
+        presets = await self._preset_manager.list_all_presets()
+        preset_list = []
+        for p in presets:
+            preset_list.append({
+                "id": str(p.id),
+                "name": p.name,
+                "description": p.description or "",
+                "is_builtin": "系统内置" if p.is_builtin else "自定义",
+            })
+        self.menu.show_preset_list(preset_list)
+        await self._wait_enter()
+
+    async def _do_select_preset(self) -> None:
+        if not self._get_current_user_id():
+            self.menu.show_message("请先登录用户", "warning")
+            return
+        user_id = self._get_current_user_id()
+        self._preset_manager.user_id = user_id
+        presets = await self._preset_manager.list_all_presets()
+        if not presets:
+            self.menu.show_message("暂无可用预设", "info")
+            return
+
+        preset_list = []
+        for i, p in enumerate(presets, 1):
+            preset_list.append(f"{i}. {p.name}")
+        self.menu.show_message("\n".join(preset_list), "info")
+
+        choice = await self.menu.get_text_input("请输入预设编号（输入 0 表示不使用预设）")
+        try:
+            idx = int(choice)
+            if idx == 0:
+                self.menu.show_message("已取消选择预设", "info")
+                return
+            if 1 <= idx <= len(presets):
+                p = presets[idx - 1]
+                self.menu.show_message(f"当前会话将使用预设: {p.name}", "success")
+            else:
+                self.menu.show_message("无效的编号", "error")
+        except ValueError:
+            self.menu.show_message("请输入有效数字", "error")
+
+    async def _do_create_preset(self) -> None:
+        user_id = self._get_current_user_id()
+        if not user_id:
+            self.menu.show_message("请先登录用户", "warning")
+            return
+        name = await self.menu.get_text_input("请输入预设名称")
+        if not name:
+            return
+        description = await self.menu.get_text_input("请输入预设描述（可选）")
+        system_prompt = await self.menu.get_text_input("请输入系统提示词 (system prompt)")
+        if not system_prompt:
+            return
+        try:
+            self._preset_manager.user_id = user_id
+            preset = await self._preset_manager.create_preset(name, description or "", system_prompt)
+            self.menu.show_message(f"预设 '{preset.name}' 创建成功", "success")
+        except ValueError as e:
+            self.menu.show_message(str(e), "error")
+
+    async def _do_edit_preset(self) -> None:
+        user_id = self._get_current_user_id()
+        if not user_id:
+            self.menu.show_message("请先登录用户", "warning")
+            return
+        self._preset_manager.user_id = user_id
+        my_presets = await self._preset_manager.list_user_presets()
+        if not my_presets:
+            self.menu.show_message("你暂无自定义预设", "info")
+            return
+        for i, p in enumerate(my_presets, 1):
+            self.menu.show_message(f"{i}. {p.name}")
+        choice = await self.menu.get_text_input("请输入要编辑的预设编号")
+        try:
+            idx = int(choice)
+            if 1 <= idx <= len(my_presets):
+                p = my_presets[idx - 1]
+                name = await self.menu.get_text_input(f"名称 [{p.name}]")
+                desc = await self.menu.get_text_input(f"描述 [{p.description}]")
+                sp = await self.menu.get_text_input(f"系统提示词 [{p.system_prompt}]")
+                updated = await self._preset_manager.update_preset(
+                    p.id, name or p.name, desc or p.description, sp or p.system_prompt
+                )
+                self.menu.show_message(f"预设 '{updated.name}' 更新成功", "success")
+            else:
+                self.menu.show_message("无效的编号", "error")
+        except ValueError as e:
+            self.menu.show_message(str(e), "error")
+
+    async def _do_delete_preset(self) -> None:
+        user_id = self._get_current_user_id()
+        if not user_id:
+            self.menu.show_message("请先登录用户", "warning")
+            return
+        self._preset_manager.user_id = user_id
+        my_presets = await self._preset_manager.list_user_presets()
+        if not my_presets:
+            self.menu.show_message("你暂无自定义预设", "info")
+            return
+        for i, p in enumerate(my_presets, 1):
+            self.menu.show_message(f"{i}. {p.name}")
+        choice = await self.menu.get_text_input("请输入要删除的预设编号")
+        try:
+            idx = int(choice)
+            if 1 <= idx <= len(my_presets):
+                p = my_presets[idx - 1]
+                confirmed = await self.menu.get_confirmation(f"确定要删除预设 '{p.name}' 吗？")
+                if confirmed:
+                    await self._preset_manager.delete_preset(p.id)
+                    self.menu.show_message(f"预设 '{p.name}' 已删除", "success")
+                else:
+                    self.menu.show_message("已取消", "info")
+            else:
+                self.menu.show_message("无效的编号", "error")
+        except ValueError as e:
+            self.menu.show_message(str(e), "error")
+
+    # ── 对话/会话（后续步骤实现） ──────────────────────────
 
     async def _handle_chat(self) -> None:
         if not self._user_manager or not self._user_manager.current_user:
@@ -182,13 +297,6 @@ class TUIApp(AbstractUI):
             if action == "back":
                 break
             self.menu.show_message("会话管理功能将在 Step 7-8 实现", "info")
-
-    async def _handle_preset_menu(self) -> None:
-        while True:
-            action = await self.menu.show_preset_menu()
-            if action == "back":
-                break
-            self.menu.show_message("预设管理功能将在 Step 5 实现", "info")
 
     async def _handle_search(self) -> None:
         self.menu.show_message("搜索功能将在 Step 9 实现", "info")
@@ -207,7 +315,6 @@ class TUIApp(AbstractUI):
         self.menu.show_message("再见！", "success")
 
     async def _wait_enter(self) -> None:
-        """等待用户按回车继续"""
         await self.menu.get_text_input("按回车键继续")
 
     # ── UI 协议接口方法（桩实现） ──────────────────────────
