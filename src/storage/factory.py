@@ -1,6 +1,7 @@
 """存储后端工厂 —— 根据配置创建对应的存储后端实例"""
 
 from src.storage.base import StorageBackend
+from src.storage.mysql_backend import MySQLBackend
 from src.storage.sqlite_backend import SQLiteBackend
 
 
@@ -9,6 +10,7 @@ class StorageFactory:
 
     _backends = {
         "sqlite": SQLiteBackend,
+        "mysql": MySQLBackend,
     }
 
     @classmethod
@@ -26,5 +28,14 @@ class StorageFactory:
         if storage_type == "sqlite":
             db_path = kwargs.get("sqlite_path", "data/sqlite/app.db")
             return backend_cls(db_path=db_path)
+
+        if storage_type == "mysql":
+            return backend_cls(
+                host=kwargs.get("mysql_host", "localhost"),
+                port=kwargs.get("mysql_port", 3306),
+                user=kwargs.get("mysql_user", "root"),
+                password=kwargs.get("mysql_password", ""),
+                database=kwargs.get("mysql_database", "langchain_chat"),
+            )
 
         return backend_cls(**kwargs)
