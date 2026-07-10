@@ -1,0 +1,41 @@
+# LangChain Chat 全局配置
+
+# 应用基本信息
+app:
+  name: langchain-chat
+  version: "1.0.0"
+  # env: dev  # 运行环境（Step 15 启用）
+
+# 默认 LLM 配置
+llm:
+  default_model: gpt-4o-mini
+  available_models:
+    - gpt-4o-mini
+    - gpt-4o
+    - gpt-3.5-turbo
+  timeout: 60           # 请求超时(秒)
+  max_retries: 3        # 最大重试次数
+  temperature: 0.7
+  max_tokens: 4096
+
+# 存储配置
+storage:
+  type: sqlite           # sqlite | mysql | file
+  sqlite:
+    path: data/sqlite/app.db
+  mysql:
+    host: localhost
+    port: 3306
+    user: root
+    password: ""
+    database: langchain_chat
+
+# 会话配置
+session:
+  auto_title_max_length: 30   # 自动标题最大字符数
+  max_history_days: 90        # 历史保留天数
+
+# 导出配置
+export:
+  base_path: data/users       # 导出基础路径
+  format: markdown            # 导出格式
