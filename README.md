@@ -1,6 +1,6 @@
 # LangChain Chat
 
-基于 LangChain 的多轮会话系统，支持多用户、多会话、预设角色、流式对话、Markdown 导出等功能。
+基于 LangChain + DeepSeek 的多轮会话系统，支持多用户、多会话、预设角色、流式对话、Markdown 导出等功能。
 
 ## 功能特性
 
@@ -118,12 +118,12 @@ storage:
 
 ### 模型配置
 
-通过 `.env` 配置 LLM 后端：
+通过 `.env` 配置 LLM 后端（默认使用 DeepSeek）：
 
 ```
-API_BASE_URL=https://api.openai.com/v1
-API_KEY=sk-your-key
-MODEL_NAME=gpt-4o-mini
+API_BASE_URL=https://api.deepseek.com/v1
+API_KEY=sk-your-deepseek-key
+MODEL_NAME=deepseek-chat
 ```
 
 ### 环境切换（Step 15）
