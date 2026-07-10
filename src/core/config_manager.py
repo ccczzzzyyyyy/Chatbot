@@ -1,4 +1,8 @@
-"""配置管理器 —— 加载 .env + config.yaml + logging.yaml"""
+"""配置管理器 —— 加载 .env + config.yaml + 环境覆盖 + logging.yaml
+
+支持通过 APP_ENV 环境变量切换运行环境（dev/test/prod）。
+配置合并策略：config.yaml（基础）→ config.{env}.yaml（覆盖）
+"""
 
 import os
 from pathlib import Path
@@ -9,34 +13,74 @@ from dotenv import load_dotenv
 
 
 class ConfigManager:
-    """统一配置管理：环境变量 + YAML 配置 + 日志配置"""
+    """统一配置管理：环境变量 + YAML 多环境配置 + 日志配置"""
 
-    def __init__(self, config_dir: str = ".") -> None:
+    def __init__(self, config_dir: str = ".", app_env: str | None = None) -> None:
         self._config_dir = Path(config_dir)
+        self._app_env = app_env or os.getenv("APP_ENV", "dev")
         self._config: dict[str, Any] = {}
         self._logging_config: dict[str, Any] = {}
         self._load()
 
-    def _load(self) -> None:
-        """加载所有配置"""
-        # 1. 加载 .env 环境变量
-        env_path = self._config_dir / ".env"
-        if env_path.exists():
-            load_dotenv(env_path)
-        else:
-            load_dotenv()
+    @property
+    def app_env(self) -> str:
+        return self._app_env
 
-        # 2. 加载 config.yaml
+    def _deep_merge(self, base: dict, override: dict) -> dict:
+        """深度合并两个字典，override 覆盖 base"""
+        result = base.copy()
+        for key, value in override.items():
+            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                result[key] = self._deep_merge(result[key], value)
+            else:
+                result[key] = value
+        return result
+
+    def _load(self) -> None:
+        """加载所有配置，按优先级合并"""
+        # 1. 加载 .env 环境变量（根据 APP_ENV 选择）
+        # 优先级: .env.{env} > .env
+        env_specific = self._config_dir / f".env.{self._app_env}"
+        if env_specific.exists():
+            load_dotenv(env_specific)
+        else:
+            dotenv_path = self._config_dir / ".env"
+            if dotenv_path.exists():
+                load_dotenv(dotenv_path)
+            else:
+                load_dotenv()
+
+        # 2. 加载基础 config.yaml
         config_path = self._config_dir / "config.yaml"
+        base_config: dict[str, Any] = {}
         if config_path.exists():
             with open(config_path, "r", encoding="utf-8") as f:
-                self._config = yaml.safe_load(f) or {}
+                base_config = yaml.safe_load(f) or {}
 
-        # 3. 加载 config/logging.yaml
+        # 3. 加载环境覆盖 config.{env}.yaml
+        env_config_path = self._config_dir / f"config.{self._app_env}.yaml"
+        env_config: dict[str, Any] = {}
+        if env_config_path.exists():
+            with open(env_config_path, "r", encoding="utf-8") as f:
+                env_config = yaml.safe_load(f) or {}
+
+        # 4. 深度合并
+        self._config = self._deep_merge(base_config, env_config)
+
+        # 5. 加载 config/logging.yaml
         logging_path = self._config_dir / "config" / "logging.yaml"
         if logging_path.exists():
             with open(logging_path, "r", encoding="utf-8") as f:
                 self._logging_config = yaml.safe_load(f) or {}
+
+        # 6. 确保数据目录存在
+        self._ensure_dirs()
+
+    def _ensure_dirs(self) -> None:
+        """确保数据目录存在"""
+        sqlite_path = self._config.get("storage", {}).get("sqlite", {}).get("path", "")
+        if sqlite_path:
+            os.makedirs(os.path.dirname(sqlite_path), exist_ok=True)
 
     # ── 便捷属性 ──────────────────────────────────────────
 
@@ -105,5 +149,5 @@ class ConfigManager:
 
     @property
     def config(self) -> dict[str, Any]:
-        """返回原始配置字典"""
+        """返回合并后的完整配置字典"""
         return self._config

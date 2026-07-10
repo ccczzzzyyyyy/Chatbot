@@ -1,0 +1,14 @@
+# 开发环境覆盖配置 —— 仅写与 config.yaml 不同的字段
+
+app:
+  env: dev
+
+llm:
+  default_model: gpt-4o-mini
+  timeout: 120
+  max_retries: 2
+
+storage:
+  type: sqlite
+  sqlite:
+    path: data/sqlite/app_dev.db

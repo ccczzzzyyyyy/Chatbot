@@ -1,0 +1,14 @@
+# 测试环境覆盖配置 —— 仅写与 config.yaml 不同的字段
+
+app:
+  env: test
+
+llm:
+  default_model: gpt-4o-mini
+  timeout: 30
+  max_retries: 1
+
+storage:
+  type: sqlite
+  sqlite:
+    path: data/sqlite/app_test.db

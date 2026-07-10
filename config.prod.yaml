@@ -1,0 +1,18 @@
+# 生产环境覆盖配置 —— 仅写与 config.yaml 不同的字段
+
+app:
+  env: prod
+
+llm:
+  default_model: gpt-4o
+  timeout: 60
+  max_retries: 3
+
+storage:
+  type: mysql
+  mysql:
+    host: localhost
+    port: 3306
+    user: root
+    password: ""
+    database: langchain_chat
