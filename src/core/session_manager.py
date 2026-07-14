@@ -1,6 +1,7 @@
 """会话管理器 —— 会话生命周期管理（创建/加载/保存/搜索/导出）"""
 
 import os
+import re
 from datetime import datetime
 from typing import Optional
 
@@ -145,7 +146,7 @@ class SessionManager:
         content = "\n".join(lines)
 
         # 创建导出目录
-        safe_title = session.title.replace(" ", "_").replace("/", "_").replace("\\", "_")
+        safe_title = re.sub(r'[\\/:*?"<>|]', "_", session.title.replace(" ", "_"))
         filename = f"{safe_title}_{date_str}.md"
         filepath = os.path.join(export_dir, str(session.user_id), "exports")
         os.makedirs(filepath, exist_ok=True)

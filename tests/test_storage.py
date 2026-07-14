@@ -175,18 +175,21 @@ class TestPresetCRUD:
 class TestUserConfigCRUD:
     """用户配置 CRUD 测试"""
 
-    async def test_set_config(self, db):
-        config = UserConfig(user_id=1, key="theme", value="dark")
+    async def test_set_config(self, db_with_user):
+        db, user = db_with_user
+        config = UserConfig(user_id=user.id, key="theme", value="dark")
         await db.set_user_config(config)
-        value = await db.get_user_config(1, "theme")
+        value = await db.get_user_config(user.id, "theme")
         assert value == "dark"
 
-    async def test_update_config(self, db):
-        await db.set_user_config(UserConfig(user_id=1, key="lang", value="zh"))
-        await db.set_user_config(UserConfig(user_id=1, key="lang", value="en"))
-        value = await db.get_user_config(1, "lang")
+    async def test_update_config(self, db_with_user):
+        db, user = db_with_user
+        await db.set_user_config(UserConfig(user_id=user.id, key="lang", value="zh"))
+        await db.set_user_config(UserConfig(user_id=user.id, key="lang", value="en"))
+        value = await db.get_user_config(user.id, "lang")
         assert value == "en"
 
-    async def test_get_nonexistent_config(self, db):
-        value = await db.get_user_config(1, "nonexistent")
+    async def test_get_nonexistent_config(self, db_with_user):
+        db, user = db_with_user
+        value = await db.get_user_config(user.id, "nonexistent")
         assert value is None

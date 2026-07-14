@@ -20,6 +20,7 @@ class ChatEngine:
         self._model_name: str = config.model_name
         self._total_prompt_tokens: int = 0
         self._total_completion_tokens: int = 0
+        self._max_context_messages: int = config.max_context_messages
 
     @property
     def model_name(self) -> str:
@@ -83,6 +84,12 @@ class ChatEngine:
     async def stream_chat(self, user_message: str) -> AsyncIterator[str]:
         """流式对话：发送用户消息，逐 token 产出 AI 回复"""
         self.add_user_message(user_message)
+
+        # 滑动窗口：超过最大上下文消息数时裁剪最早的消息
+        if len(self._messages) > self._max_context_messages:
+            overflow = len(self._messages) - self._max_context_messages
+            self._messages = self._messages[overflow:]
+
         llm = self._build_llm()
         api_messages = self._build_messages_for_api()
 

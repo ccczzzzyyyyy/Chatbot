@@ -33,6 +33,7 @@ storage:
 session:
   auto_title_max_length: 30   # 自动标题最大字符数
   max_history_days: 90        # 历史保留天数
+  max_context_messages: 40    # 对话上下文最大消息数（超过后滑动窗口裁剪）
 
 # 导出配置
 export:

@@ -129,6 +129,10 @@ class ConfigManager:
         return self._config.get("session", {}).get("auto_title_max_length", 30)
 
     @property
+    def max_context_messages(self) -> int:
+        return self._config.get("session", {}).get("max_context_messages", 40)
+
+    @property
     def export_base_path(self) -> str:
         return self._config.get("export", {}).get("base_path", "data/users")
 

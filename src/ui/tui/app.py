@@ -3,6 +3,7 @@
 import logging
 import logging.config
 import os
+from typing import Any
 
 from src.core.chat_engine import ChatEngine
 from src.core.config_manager import ConfigManager
@@ -39,25 +40,27 @@ class TUIApp:
         return None
 
     @staticmethod
-    def _setup_logging() -> None:
-        """配置日志系统"""
-        os.makedirs("logs", exist_ok=True)
-        logging.basicConfig(
-            level=logging.INFO,
-            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-            handlers=[
-                logging.StreamHandler(),
-                logging.FileHandler("logs/app.log", encoding="utf-8"),
-            ],
-        )
+    def _setup_logging(logging_config: dict[str, Any] | None = None) -> None:
+        """配置日志系统，优先使用 YAML 配置"""
+        if logging_config:
+            os.makedirs("logs", exist_ok=True)
+            logging.config.dictConfig(logging_config)
+        else:
+            os.makedirs("logs", exist_ok=True)
+            logging.basicConfig(
+                level=logging.INFO,
+                format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+                handlers=[
+                    logging.StreamHandler(),
+                    logging.FileHandler("logs/app.log", encoding="utf-8"),
+                ],
+            )
 
     async def run(self) -> None:
         """启动 TUI 主循环"""
-        # 配置日志
-        self._setup_logging()
-
         self._config = ConfigManager()
+        self._setup_logging(self._config.get_logging_config())
         storage_config = self._config.storage_config
         self._storage = StorageFactory.create(
             self._config.storage_type,
