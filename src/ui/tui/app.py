@@ -9,7 +9,6 @@ from src.core.config_manager import ConfigManager
 from src.core.preset_manager import PresetManager
 from src.core.session_manager import SessionManager
 from src.core.user_manager import UserManager
-from src.interface.ui_protocol import AbstractUI
 from src.storage.factory import StorageFactory
 from src.ui.tui.chat_view import ChatView
 from src.ui.tui.menu_view import MenuView
@@ -18,7 +17,7 @@ from src.ui.tui.widgets import console, render_markdown
 logger = logging.getLogger("langchain_chat")
 
 
-class TUIApp(AbstractUI):
+class TUIApp:
     """TUI 主应用程序，管理菜单路由和应用状态"""
 
     def __init__(self) -> None:
@@ -128,7 +127,7 @@ class TUIApp(AbstractUI):
             return
         try:
             user = await self._user_manager.create_user(username)
-            self._user_manager._current_user = user
+            self._user_manager.set_current_user(user)
             self._preset_manager.user_id = user.id
             self.menu.show_message(f"用户 '{username}' 创建成功，已自动登录", "success")
         except ValueError as e:
@@ -174,7 +173,7 @@ class TUIApp(AbstractUI):
         self.menu.show_user_list(user_list)
         await self._wait_enter()
 
-    # ── 预设管理（Step 5） ────────────────────────────────
+    # ── 预设管理 ──────────────────────────────────────────
 
     async def _handle_preset_menu(self) -> None:
         while True:
@@ -231,6 +230,7 @@ class TUIApp(AbstractUI):
                 return
             if 1 <= idx <= len(presets):
                 p = presets[idx - 1]
+                self._chat_engine.set_system_prompt(p.system_prompt)
                 self.menu.show_message(f"当前会话将使用预设: {p.name}", "success")
             else:
                 self.menu.show_message("无效的编号", "error")
@@ -313,52 +313,50 @@ class TUIApp(AbstractUI):
         except ValueError as e:
             self.menu.show_message(str(e), "error")
 
-    # ── 核心对话（Step 7 实现） ────────────────────────────
+    # ── 核心对话 ──────────────────────────────────────────
 
     async def _handle_chat(self) -> None:
-        """进入对话模式"""
+        """进入对话模式（新会话）"""
         user_id = self._get_current_user_id()
         if not user_id:
             self.menu.show_message("请先创建或选择用户", "warning")
             return
 
-        # 创建新会话
-        current_model = self._config.model_name
         session = await self._session_manager.create_session(
             user_id=user_id,
-            model_name=current_model,
+            model_name=self._config.model_name,
         )
-
-        # 初始化对话引擎
         self._chat_engine.clear_history()
-        self._chat_engine.set_model(current_model)
-
-        await self.chat.start_chat_view(session.title)
+        self._chat_engine.set_model(self._config.model_name)
         await self.chat.display_info("进入对话模式，输入消息开始对话，输入 /quit 退出对话")
+        await self._run_chat_loop(session.title)
 
-        # 对话循环
+    async def _run_chat_loop(self, session_title: str) -> None:
+        """共享的对话循环"""
+        await self.chat.start_chat_view(session_title)
+
         while self._running:
             user_msg = await self.chat.get_user_message()
             if not user_msg:
                 continue
 
-            # 处理内置命令
             if user_msg == "/quit":
                 break
             elif user_msg == "/help":
                 await self.chat.display_help()
                 continue
             elif user_msg == "/new":
-                await self.chat.display_info("返回主菜单新建会话...")
                 break
+            elif user_msg == "/model":
+                await self._handle_in_chat_model_switch()
+                continue
+            elif user_msg == "/export":
+                await self._handle_in_chat_export()
+                continue
 
-            # 显示用户消息
             await self.chat.display_user_message(user_msg)
-
-            # 保存用户消息
             await self._session_manager.save_message(role="human", content=user_msg)
 
-            # 调用 LLM 流式输出
             try:
                 console.print()
                 console.print("[bold cyan]AI:[/bold cyan]")
@@ -369,13 +367,9 @@ class TUIApp(AbstractUI):
                     console.print(chunk, end="")
                 console.print("\n")
 
-                # Markdown 渲染
                 if full_response:
                     console.print()
                     render_markdown(full_response)
-
-                # 保存 AI 回复
-                if full_response:
                     await self._session_manager.save_message(
                         role="ai",
                         content=full_response,
@@ -383,7 +377,6 @@ class TUIApp(AbstractUI):
                         completion_tokens=self._chat_engine.total_completion_tokens,
                     )
 
-                # 显示 Token 用量
                 await self.chat.display_token_usage(
                     self._chat_engine.total_prompt_tokens,
                     self._chat_engine.total_completion_tokens,
@@ -391,12 +384,44 @@ class TUIApp(AbstractUI):
                     self._session_manager.current_session.total_completion_tokens,
                 )
             except Exception as e:
+                logger.exception("LLM 调用失败")
                 await self.chat.display_error(f"LLM 调用失败: {str(e)}")
 
         self.menu.show_message("对话已结束", "info")
         await self._wait_enter()
 
-    # ── 会话管理（Step 7-8） ──────────────────────────────
+    async def _handle_in_chat_model_switch(self) -> None:
+        """对话内切换模型"""
+        models = self._config.available_models
+        self.menu.show_message("可用模型:", "info")
+        for i, m in enumerate(models, 1):
+            current = " (当前)" if m == self._chat_engine.model_name else ""
+            self.menu.show_message(f"  {i}. {m}{current}")
+        choice = await self.menu.get_text_input("输入编号切换模型（回车返回）")
+        if choice:
+            try:
+                idx = int(choice)
+                if 1 <= idx <= len(models):
+                    new_model = models[idx - 1]
+                    self._chat_engine.set_model(new_model)
+                    self.menu.show_message(f"已切换到: {new_model}", "success")
+            except ValueError:
+                pass
+
+    async def _handle_in_chat_export(self) -> None:
+        """对话内导出当前会话"""
+        if self._session_manager.current_session:
+            try:
+                filepath = await self._session_manager.export_session_to_markdown(
+                    self._session_manager.current_session.id
+                )
+                self.menu.show_message(f"已导出到: {filepath}", "success")
+            except Exception as e:
+                self.menu.show_message(f"导出失败: {e}", "error")
+        else:
+            self.menu.show_message("当前无活动会话", "warning")
+
+    # ── 会话管理 ──────────────────────────────────────────
 
     async def _handle_session_menu(self) -> None:
         while True:
@@ -434,61 +459,12 @@ class TUIApp(AbstractUI):
                 s = sessions[idx - 1]
                 await self._session_manager.load_session(s.id)
                 messages = await self._session_manager.get_session_messages(s.id)
-
-                # 恢复对话引擎历史
                 self._chat_engine.clear_history()
                 self._chat_engine.set_model(s.model_name)
                 history = [{"role": m.role, "content": m.content} for m in messages]
                 self._chat_engine.restore_history(history)
-
-                # 进入对话
-                await self.chat.start_chat_view(s.title)
                 await self.chat.display_info(f"已加载会话: {s.title}")
-
-                while self._running:
-                    user_msg = await self.chat.get_user_message()
-                    if not user_msg:
-                        continue
-                    if user_msg == "/quit":
-                        break
-                    elif user_msg == "/help":
-                        await self.chat.display_help()
-                        continue
-                    elif user_msg == "/new":
-                        break
-
-                    await self.chat.display_user_message(user_msg)
-                    await self._session_manager.save_message(role="human", content=user_msg)
-
-                    try:
-                        console.print()
-                        console.print("[bold cyan]AI:[/bold cyan]")
-
-                        full_response = ""
-                        async for chunk in self._chat_engine.stream_chat(user_msg):
-                            full_response += chunk
-                            console.print(chunk, end="")
-                        console.print("\n")
-
-                        if full_response:
-                            console.print()
-                            render_markdown(full_response)
-
-                        if full_response:
-                            await self._session_manager.save_message(
-                                role="ai",
-                                content=full_response,
-                                prompt_tokens=self._chat_engine.total_prompt_tokens,
-                                completion_tokens=self._chat_engine.total_completion_tokens,
-                            )
-                        await self.chat.display_token_usage(
-                            self._chat_engine.total_prompt_tokens,
-                            self._chat_engine.total_completion_tokens,
-                            self._session_manager.current_session.total_prompt_tokens,
-                            self._session_manager.current_session.total_completion_tokens,
-                        )
-                    except Exception as e:
-                        await self.chat.display_error(f"LLM 调用失败: {str(e)}")
+                await self._run_chat_loop(s.title)
             else:
                 self.menu.show_message("无效的编号", "error")
         except ValueError:
@@ -558,7 +534,7 @@ class TUIApp(AbstractUI):
         except ValueError:
             self.menu.show_message("请输入有效数字", "error")
 
-    # ── 搜索（Step 9 桩） ─────────────────────────────────
+    # ── 搜索 ──────────────────────────────────────────────
 
     async def _handle_search(self) -> None:
         user_id = self._get_current_user_id()
@@ -578,7 +554,7 @@ class TUIApp(AbstractUI):
                 self.menu.show_message(f"  {r.get('content', '')[:100]}")
         await self._wait_enter()
 
-    # ── 导出（Step 10 桩） ────────────────────────────────
+    # ── 导出 ──────────────────────────────────────────────
 
     async def _handle_export(self) -> None:
         user_id = self._get_current_user_id()
@@ -602,7 +578,7 @@ class TUIApp(AbstractUI):
             self.menu.show_message("请输入有效数字", "error")
         await self._wait_enter()
 
-    # ── 模型设置（Step 10 桩） ────────────────────────────
+    # ── 模型设置 ──────────────────────────────────────────
 
     async def _handle_model_settings(self) -> None:
         models = self._config.available_models
@@ -636,29 +612,3 @@ class TUIApp(AbstractUI):
 
     async def _wait_enter(self) -> None:
         await self.menu.get_text_input("按回车键继续")
-
-    # ── UI 协议接口方法 ──────────────────────────────────
-
-    async def display_message(self, content: str, role: str = "ai") -> None:
-        pass
-
-    async def display_stream(self, chunk: str) -> None:
-        pass
-
-    async def display_error(self, message: str) -> None:
-        pass
-
-    async def display_info(self, message: str) -> None:
-        pass
-
-    async def get_input(self, prompt_text: str = "> ") -> str:
-        return ""
-
-    async def get_confirmation(self, prompt_text: str) -> bool:
-        return False
-
-    async def show_menu(self, title: str, options: list[str]) -> int:
-        return 0
-
-    async def show_table(self, title: str, headers: list[str], rows: list[list[str]]) -> None:
-        pass

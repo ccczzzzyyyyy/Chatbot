@@ -87,21 +87,26 @@ class ChatEngine:
         api_messages = self._build_messages_for_api()
 
         full_content = ""
+        usage = None
         async for chunk in llm.astream(api_messages):
             content = chunk.content if hasattr(chunk, "content") else str(chunk)
             if content:
                 full_content += content
                 yield content
+            if hasattr(chunk, "usage_metadata") and chunk.usage_metadata:
+                usage = chunk.usage_metadata
 
-        # 将完整回复添加到历史
         if full_content:
             self.add_ai_message(full_content)
 
-            # 估算 token 用量（粗略估算：中文约 1.5 字/token，英文约 4 字/token）
-            prompt_chars = sum(len(m.content) if hasattr(m, "content") else 0 for m in api_messages)
-            completion_chars = len(full_content)
-            prompt_tokens = max(1, prompt_chars // 2)
-            completion_tokens = max(1, completion_chars // 2)
+            if usage and usage.get("input_tokens"):
+                prompt_tokens = usage.get("input_tokens", 0)
+                completion_tokens = usage.get("output_tokens", 0)
+            else:
+                prompt_chars = sum(len(m.content) if hasattr(m, "content") else 0 for m in api_messages)
+                completion_chars = len(full_content)
+                prompt_tokens = max(1, prompt_chars // 2)
+                completion_tokens = max(1, completion_chars // 2)
 
             self._total_prompt_tokens += prompt_tokens
             self._total_completion_tokens += completion_tokens

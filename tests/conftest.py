@@ -47,17 +47,7 @@ async def db_with_session(db_with_user):
     """创建含有一个用户和一个会话的数据库"""
     from src.models.schemas import Session
 
-    db, user = await anext(db_with_user.__aiter__()) if hasattr(db_with_user, '__aiter__') else db_with_user
-    # db_with_user is a tuple of (db, user)
-    db = db_with_user[0]
-    user = db_with_user[1]
-
+    db, user = db_with_user
     session = Session(user_id=user.id, title="测试会话", model_name="gpt-4o-mini")
     session = await db.create_session(session)
     return db, user, session
-
-
-@pytest_asyncio.fixture
-async def db_with_user_tuple(db_with_user):
-    """返回 (db, user) 元组"""
-    return db_with_user

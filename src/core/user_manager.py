@@ -35,6 +35,10 @@ class UserManager:
         self._current_user = user
         return user
 
+    def set_current_user(self, user: Optional[User]) -> None:
+        """设置当前登录用户（不查库，直接赋值，用于首次创建用户后的自动登录）"""
+        self._current_user = user
+
     async def delete_user(self, username: str) -> bool:
         """删除用户及其所有关联数据"""
         user = await self._storage.get_user_by_username(username)

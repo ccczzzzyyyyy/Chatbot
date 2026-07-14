@@ -1,8 +1,8 @@
 """文件系统存储后端 —— 使用 JSON 文件实现持久化"""
 
+import asyncio
 import json
 import os
-import threading
 from datetime import datetime
 from typing import Optional
 
@@ -15,7 +15,7 @@ class FileBackend(StorageBackend):
 
     def __init__(self, data_dir: str = "data/file_storage") -> None:
         self._data_dir = data_dir
-        self._lock = threading.Lock()
+        self._lock = asyncio.Lock()
 
     async def initialize(self) -> None:
         """确保数据目录存在"""
@@ -27,10 +27,10 @@ class FileBackend(StorageBackend):
         """无需特别关闭操作"""
         pass
 
-    def _next_id(self, entity: str) -> int:
+    async def _next_id(self, entity: str) -> int:
         """生成自增 ID"""
         id_file = os.path.join(self._data_dir, f"{entity}_next_id")
-        with self._lock:
+        async with self._lock:
             if os.path.exists(id_file):
                 with open(id_file, "r") as f:
                     current = int(f.read().strip())
@@ -76,7 +76,7 @@ class FileBackend(StorageBackend):
     # ── User CRUD ──────────────────────────────────────────
 
     async def create_user(self, user: User) -> User:
-        user.id = self._next_id("users")
+        user.id = await self._next_id("users")
         user.created_at = datetime.now()
         user.updated_at = datetime.now()
         self._write_json(
@@ -114,7 +114,7 @@ class FileBackend(StorageBackend):
     # ── Session CRUD ───────────────────────────────────────
 
     async def create_session(self, session: Session) -> Session:
-        session.id = self._next_id("sessions")
+        session.id = await self._next_id("sessions")
         session.created_at = datetime.now()
         session.updated_at = datetime.now()
         os.makedirs(os.path.join(self._data_dir, "sessions", str(session.user_id)), exist_ok=True)
@@ -166,7 +166,7 @@ class FileBackend(StorageBackend):
     # ── Message CRUD ───────────────────────────────────────
 
     async def create_message(self, message: Message) -> Message:
-        message.id = self._next_id("messages")
+        message.id = await self._next_id("messages")
         message.created_at = datetime.now()
         msg_dir = os.path.join(self._data_dir, "messages", str(message.session_id))
         os.makedirs(msg_dir, exist_ok=True)
@@ -204,7 +204,7 @@ class FileBackend(StorageBackend):
     # ── Preset CRUD ────────────────────────────────────────
 
     async def create_preset(self, preset: Preset) -> Preset:
-        preset.id = self._next_id("presets")
+        preset.id = await self._next_id("presets")
         preset.created_at = datetime.now()
         preset.updated_at = datetime.now()
         self._write_json(
