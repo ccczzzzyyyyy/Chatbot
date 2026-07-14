@@ -12,9 +12,10 @@ from src.storage.base import StorageBackend
 class SessionManager:
     """会话管理业务逻辑"""
 
-    def __init__(self, storage: StorageBackend) -> None:
+    def __init__(self, storage: StorageBackend, auto_title_max_length: int = 30) -> None:
         self._storage = storage
         self._current_session: Optional[Session] = None
+        self._auto_title_max_length = auto_title_max_length
 
     @property
     def current_session(self) -> Optional[Session]:
@@ -68,7 +69,7 @@ class SessionManager:
 
         # 如果是用户首条消息且会话标题为"新对话"，自动生成标题
         if role == "human" and self._current_session.title == "新对话":
-            title = content[:30].replace("\n", " ")
+            title = content[:self._auto_title_max_length].replace("\n", " ")
             await self.set_session_title(title)
 
         # 更新会话 token 计数

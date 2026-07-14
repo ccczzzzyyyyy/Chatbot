@@ -63,8 +63,3 @@ def format_token_usage(prompt_tokens: int, completion_tokens: int) -> str:
     return f"Token 用量: prompt={prompt_tokens}, completion={completion_tokens}, total={total}"
 
 
-def truncate_text(text: str, max_length: int = 30) -> str:
-    """截断文本，超过长度加省略号"""
-    if len(text) <= max_length:
-        return text
-    return text[:max_length] + "..."

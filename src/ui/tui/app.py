@@ -69,7 +69,7 @@ class TUIApp:
         await self._storage.initialize()
         self._user_manager = UserManager(self._storage)
         self._preset_manager = PresetManager(self._storage)
-        self._session_manager = SessionManager(self._storage)
+        self._session_manager = SessionManager(self._storage, self._config.auto_title_max_length)
         self._chat_engine = ChatEngine(self._config)
         await self._preset_manager.load_builtin_presets()
 
@@ -229,6 +229,7 @@ class TUIApp:
         try:
             idx = int(choice)
             if idx == 0:
+                self._chat_engine.set_system_prompt(None)
                 self.menu.show_message("已取消选择预设", "info")
                 return
             if 1 <= idx <= len(presets):

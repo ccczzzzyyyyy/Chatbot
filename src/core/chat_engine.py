@@ -1,6 +1,5 @@
 """对话引擎 —— LLM 调用、Memory、流式输出、超时重试、Token 统计"""
 
-import asyncio
 from typing import AsyncIterator, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage

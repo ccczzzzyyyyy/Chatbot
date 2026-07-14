@@ -124,13 +124,6 @@ class MySQLBackend(StorageBackend):
             await self._pool.wait_closed()
             self._pool = None
 
-    async def _execute(self, sql: str, params: tuple = ()) -> aiomysql.Cursor:
-        """执行 SQL 并返回 cursor"""
-        async with self._pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cur:
-                await cur.execute(sql, params)
-                return cur
-
     async def _fetchone(self, sql: str, params: tuple = ()) -> Optional[dict]:
         """执行查询并返回一行"""
         async with self._pool.acquire() as conn:
