@@ -374,16 +374,17 @@ class TUIApp:
                 if full_response:
                     console.print()
                     render_markdown(full_response)
+                    last_usage = self._chat_engine.get_last_usage()
                     await self._session_manager.save_message(
                         role="ai",
                         content=full_response,
-                        prompt_tokens=self._chat_engine.total_prompt_tokens,
-                        completion_tokens=self._chat_engine.total_completion_tokens,
+                        prompt_tokens=last_usage.prompt_tokens,
+                        completion_tokens=last_usage.completion_tokens,
                     )
 
                 await self.chat.display_token_usage(
-                    self._chat_engine.total_prompt_tokens,
-                    self._chat_engine.total_completion_tokens,
+                    last_usage.prompt_tokens,
+                    last_usage.completion_tokens,
                     self._session_manager.current_session.total_prompt_tokens,
                     self._session_manager.current_session.total_completion_tokens,
                 )
@@ -416,8 +417,9 @@ class TUIApp:
         """对话内导出当前会话"""
         if self._session_manager.current_session:
             try:
+                username = self._user_manager.current_user.username if self._user_manager.current_user else ""
                 filepath = await self._session_manager.export_session_to_markdown(
-                    self._session_manager.current_session.id
+                    self._session_manager.current_session.id, username=username
                 )
                 self.menu.show_message(f"已导出到: {filepath}", "success")
             except Exception as e:
@@ -576,7 +578,8 @@ class TUIApp:
             idx = int(choice)
             if 1 <= idx <= len(sessions):
                 s = sessions[idx - 1]
-                filepath = await self._session_manager.export_session_to_markdown(s.id)
+                username = self._user_manager.current_user.username if self._user_manager.current_user else ""
+                filepath = await self._session_manager.export_session_to_markdown(s.id, username=username)
                 self.menu.show_message(f"已导出到: {filepath}", "success")
         except ValueError:
             self.menu.show_message("请输入有效数字", "error")
@@ -608,7 +611,43 @@ class TUIApp:
         await self._wait_enter()
 
     async def _handle_settings(self) -> None:
-        self.menu.show_message("系统设置功能将在后续步骤实现", "info")
+        """显示系统设置信息"""
+        from src.ui.tui.widgets import render_table
+
+        print_title = self.menu.show_message
+        self.menu.show_message("", "info")
+
+        config = self._config
+        info_rows = [
+            ["应用名称", config.config.get("app", {}).get("name", "N/A")],
+            ["应用版本", config.config.get("app", {}).get("version", "N/A")],
+            ["运行环境", config.app_env],
+            ["存储类型", config.storage_type],
+            ["LLM 默认模型", config.model_name],
+            ["LLM 超时(秒)", str(config.llm_timeout)],
+            ["LLM 最大重试", str(config.llm_max_retries)],
+            ["LLM 温度", str(config.llm_temperature)],
+            ["LLM 最大 Token", str(config.llm_max_tokens)],
+            ["上下文窗口(条)", str(config.max_context_messages)],
+            ["自动标题长度", str(config.auto_title_max_length)],
+            ["导出路径", config.export_base_path],
+        ]
+
+        available = config.available_models
+        info_rows.append(["可用模型", ", ".join(available)])
+
+        current_user = self.current_user
+        if current_user:
+            info_rows.append(["当前用户", f"{current_user['username']} (ID: {current_user['id']})"])
+        else:
+            info_rows.append(["当前用户", "未登录"])
+
+        session = self._session_manager.current_session
+        if session:
+            info_rows.append(["当前会话", f"[{session.id}] {session.title}"])
+
+        render_table("系统设置", ["配置项", "值"], info_rows)
+        await self._wait_enter()
 
     async def _handle_quit(self) -> None:
         self._running = False

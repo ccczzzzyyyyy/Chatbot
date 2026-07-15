@@ -2,12 +2,15 @@
 
 import asyncio
 import json
+import logging
 import os
 from datetime import datetime
 from typing import Optional
 
 from src.models.schemas import Message, Preset, Session, User, UserConfig
 from src.storage.base import StorageBackend
+
+logger = logging.getLogger("langchain_chat")
 
 
 class FileBackend(StorageBackend):
@@ -19,6 +22,7 @@ class FileBackend(StorageBackend):
 
     async def initialize(self) -> None:
         """确保数据目录存在"""
+        logger.info("初始化文件存储: %s", self._data_dir)
         os.makedirs(self._data_dir, exist_ok=True)
         for subdir in ["users", "sessions", "messages", "presets", "configs"]:
             os.makedirs(os.path.join(self._data_dir, subdir), exist_ok=True)
@@ -154,6 +158,13 @@ class FileBackend(StorageBackend):
         return session
 
     async def delete_session(self, session_id: int) -> bool:
+        # 级联删除消息
+        msg_dir = os.path.join(self._data_dir, "messages", str(session_id))
+        if os.path.exists(msg_dir):
+            for f in os.listdir(msg_dir):
+                os.remove(os.path.join(msg_dir, f))
+            os.rmdir(msg_dir)
+
         sessions_root = os.path.join(self._data_dir, "sessions")
         if not os.path.exists(sessions_root):
             return False

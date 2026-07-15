@@ -1,9 +1,12 @@
 """用户管理器 —— 创建/切换/删除用户"""
 
+import logging
 from typing import Optional
 
 from src.models.schemas import User
 from src.storage.base import StorageBackend
+
+logger = logging.getLogger("langchain_chat")
 
 
 class UserManager:
@@ -25,6 +28,7 @@ class UserManager:
 
         user = User(username=username)
         user = await self._storage.create_user(user)
+        logger.info("创建用户: id=%d, username=%s", user.id, username)
         return user
 
     async def switch_user(self, username: str) -> User:
@@ -49,6 +53,7 @@ class UserManager:
         if self._current_user and self._current_user.id == user.id:
             self._current_user = None
 
+        logger.info("删除用户: username=%s, id=%d", username, user.id)
         return await self._storage.delete_user(user.id)
 
     async def list_users(self) -> list[User]:

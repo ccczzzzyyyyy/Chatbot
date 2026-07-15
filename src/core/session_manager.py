@@ -1,5 +1,6 @@
 """会话管理器 —— 会话生命周期管理（创建/加载/保存/搜索/导出）"""
 
+import logging
 import os
 import re
 from datetime import datetime
@@ -7,6 +8,8 @@ from typing import Optional
 
 from src.models.schemas import Message, Session
 from src.storage.base import StorageBackend
+
+logger = logging.getLogger("langchain_chat")
 
 
 class SessionManager:
@@ -37,6 +40,7 @@ class SessionManager:
         )
         session = await self._storage.create_session(session)
         self._current_session = session
+        logger.info("创建会话: id=%d, title=%s, user_id=%d", session.id, session.title, user_id)
         return session
 
     async def load_session(self, session_id: int) -> Session:
@@ -70,6 +74,7 @@ class SessionManager:
         # 如果是用户首条消息且会话标题为"新对话"，自动生成标题
         if role == "human" and self._current_session.title == "新对话":
             title = content[:self._auto_title_max_length].replace("\n", " ")
+            logger.info("自动生成会话标题: session_id=%d, title=%s", self._current_session.id, title)
             await self.set_session_title(title)
 
         # 更新会话 token 计数
@@ -106,6 +111,7 @@ class SessionManager:
 
     async def delete_session(self, session_id: int) -> bool:
         """删除会话"""
+        logger.info("删除会话: id=%d", session_id)
         if self._current_session and self._current_session.id == session_id:
             self._current_session = None
         return await self._storage.delete_session(session_id)
@@ -114,7 +120,7 @@ class SessionManager:
         """搜索消息"""
         return await self._storage.search_messages(user_id, keyword)
 
-    async def export_session_to_markdown(self, session_id: int, export_dir: str = "data/users") -> str:
+    async def export_session_to_markdown(self, session_id: int, username: str = "", export_dir: str = "data/users") -> str:
         """导出会话为 Markdown 文件，返回文件路径"""
         session = await self._storage.get_session_by_id(session_id)
         if not session:
@@ -147,9 +153,10 @@ class SessionManager:
         content = "\n".join(lines)
 
         # 创建导出目录
+        safe_username = re.sub(r'[\\/:*?"<>|]', "_", username) if username else str(session.user_id)
         safe_title = re.sub(r'[\\/:*?"<>|]', "_", session.title.replace(" ", "_"))
         filename = f"{safe_title}_{date_str}.md"
-        filepath = os.path.join(export_dir, str(session.user_id), "exports")
+        filepath = os.path.join(export_dir, safe_username, "exports")
         os.makedirs(filepath, exist_ok=True)
         full_path = os.path.join(filepath, filename)
 

@@ -1,5 +1,6 @@
 """预设管理器 —— 内置预设 + 用户自定义预设的 CRUD"""
 
+import logging
 import os
 from typing import Optional
 
@@ -7,6 +8,8 @@ import yaml
 
 from src.models.schemas import Preset
 from src.storage.base import StorageBackend
+
+logger = logging.getLogger("langchain_chat")
 
 
 class PresetManager:
@@ -51,6 +54,7 @@ class PresetManager:
             preset = await self._storage.create_preset(preset)
             builtins.append(preset)
 
+        logger.info("加载 %d 个系统内置预设", len(builtins))
         return builtins
 
     async def list_all_presets(self) -> list[Preset]:

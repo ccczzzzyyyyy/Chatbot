@@ -4,12 +4,15 @@
 配置合并策略：config.yaml（基础）→ config.{env}.yaml（覆盖）
 """
 
+import logging
 import os
 from pathlib import Path
 from typing import Any
 
 import yaml
 from dotenv import load_dotenv
+
+logger = logging.getLogger("langchain_chat")
 
 
 class ConfigManager:
@@ -66,6 +69,8 @@ class ConfigManager:
 
         # 4. 深度合并
         self._config = self._deep_merge(base_config, env_config)
+        logger.info("加载配置: APP_ENV=%s, storage_type=%s", self._app_env,
+                      self._config.get("storage", {}).get("type", "unknown"))
 
         # 5. 加载 config/logging.yaml
         logging_path = self._config_dir / "config" / "logging.yaml"

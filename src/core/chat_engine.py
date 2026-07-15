@@ -1,5 +1,6 @@
 """对话引擎 —— LLM 调用、Memory、流式输出、超时重试、Token 统计"""
 
+import logging
 from typing import AsyncIterator, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -7,6 +8,8 @@ from langchain_openai import ChatOpenAI
 
 from src.core.config_manager import ConfigManager
 from src.models.schemas import TokenUsage
+
+logger = logging.getLogger("langchain_chat")
 
 
 class ChatEngine:
@@ -19,6 +22,8 @@ class ChatEngine:
         self._model_name: str = config.model_name
         self._total_prompt_tokens: int = 0
         self._total_completion_tokens: int = 0
+        self._last_prompt_tokens: int = 0
+        self._last_completion_tokens: int = 0
         self._max_context_messages: int = config.max_context_messages
 
     @property
@@ -43,6 +48,7 @@ class ChatEngine:
 
     def set_model(self, model_name: str) -> None:
         """切换模型"""
+        logger.info("切换模型: %s -> %s", self._model_name, model_name)
         self._model_name = model_name
 
     def clear_history(self) -> None:
@@ -50,6 +56,8 @@ class ChatEngine:
         self._messages.clear()
         self._total_prompt_tokens = 0
         self._total_completion_tokens = 0
+        self._last_prompt_tokens = 0
+        self._last_completion_tokens = 0
 
     def add_user_message(self, content: str) -> None:
         """添加用户消息到历史"""
@@ -87,11 +95,13 @@ class ChatEngine:
         # 滑动窗口：超过最大上下文消息数时裁剪最早的消息
         if len(self._messages) > self._max_context_messages:
             overflow = len(self._messages) - self._max_context_messages
+            logger.debug("触发上下文裁剪, 裁剪 %d 条消息", overflow)
             self._messages = self._messages[overflow:]
 
         llm = self._build_llm()
         api_messages = self._build_messages_for_api()
 
+        logger.debug("发送 LLM 请求, 模型=%s, 消息数=%d", self._model_name, len(api_messages))
         full_content = ""
         usage = None
         async for chunk in llm.astream(api_messages):
@@ -116,6 +126,11 @@ class ChatEngine:
 
             self._total_prompt_tokens += prompt_tokens
             self._total_completion_tokens += completion_tokens
+            self._last_prompt_tokens = prompt_tokens
+            self._last_completion_tokens = completion_tokens
+            logger.info("LLM 回复完成, 本轮 token: prompt=%d completion=%d, 累计: prompt=%d completion=%d",
+                        prompt_tokens, completion_tokens,
+                        self._total_prompt_tokens, self._total_completion_tokens)
 
     async def chat(self, user_message: str) -> str:
         """非流式对话：发送用户消息，返回完整 AI 回复"""
@@ -125,12 +140,11 @@ class ChatEngine:
         return full_content
 
     def get_last_usage(self) -> TokenUsage:
-        """获取最近一轮的 Token 用量估计"""
-        # 返回累计用量
+        """获取最近一轮的 Token 用量"""
         return TokenUsage(
-            prompt_tokens=self._total_prompt_tokens,
-            completion_tokens=self._total_completion_tokens,
-            total_tokens=self._total_prompt_tokens + self._total_completion_tokens,
+            prompt_tokens=self._last_prompt_tokens,
+            completion_tokens=self._last_completion_tokens,
+            total_tokens=self._last_prompt_tokens + self._last_completion_tokens,
         )
 
     def get_history_as_dicts(self) -> list[dict]:

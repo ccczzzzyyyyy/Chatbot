@@ -1,11 +1,14 @@
 """SQLite 存储后端 —— 使用 aiosqlite 实现异步 CRUD"""
 
+import logging
 from typing import Optional
 
 import aiosqlite
 
 from src.models.schemas import Message, Preset, Session, User, UserConfig
 from src.storage.base import StorageBackend
+
+logger = logging.getLogger("langchain_chat")
 
 
 class SQLiteBackend(StorageBackend):
@@ -22,6 +25,7 @@ class SQLiteBackend(StorageBackend):
         os.makedirs(os.path.dirname(self._db_path), exist_ok=True)
         self._conn = await aiosqlite.connect(self._db_path)
         self._conn.row_factory = aiosqlite.Row
+        logger.info("初始化 SQLite 数据库: %s", self._db_path)
         await self._conn.execute("PRAGMA foreign_keys = ON")
         await self._conn.executescript(
             """
